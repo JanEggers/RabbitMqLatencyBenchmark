@@ -11,16 +11,28 @@ using System.Text.Json;
 var mode = "Mqtt"; // Amqp
 
 // MQTT 6000 msgs/sec max latency 20sec
-var clientcount = 100;
-var batchSize = 2;
+//var clientcount = 100;
+//var batchSize = 2;
+
+// MQTT 6000 msgs/sec max latency 25ms
+//var clientcount = 100;
+//var batchSize = 1;
 
 // MQTT 5000 msgs/sec max latency 30sec
 //var clientcount = 50;
 //var batchSize = 20;
 
+// MQTT 6000 msgs/sec max latency 15ms
+//var clientcount = 50;
+//var batchSize = 2;
+
 // MQTT 4000 msgs / sec max latency 30sec
 //var clientcount = 20;
 //var batchSize = 50;
+
+// MQTT 6000 msgs / sec max latency 10ms
+//var clientcount = 20;
+//var batchSize = 5;
 
 // MQTT 20000 msgs / sec max latency 50ms
 //var clientcount = 12;

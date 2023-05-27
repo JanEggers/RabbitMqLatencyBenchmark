@@ -10,9 +10,10 @@ using System.Text.Json;
 
 var mode = "Mqtt"; // Amqp
 
-// MQTT 6000 msgs/sec max latency 20sec
-//var clientcount = 100;
-//var batchSize = 2;
+//MQTT 6000 msgs / sec max latency 20sec
+//MQTT Queue V2 12000 msgs / sec max latency 18sec
+var clientcount = 100;
+var batchSize = 2;
 
 // MQTT 6000 msgs/sec max latency 25ms
 //var clientcount = 100;

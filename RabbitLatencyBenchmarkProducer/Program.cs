@@ -1,0 +1,139 @@
+﻿
+
+using MQTTnet.Client;
+using MQTTnet.Diagnostics;
+using MQTTnet.Implementations;
+using RabbitMQ.Client;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
+
+//var factory = new ConnectionFactory();
+//factory.UserName = "user";
+//factory.Password= "password";
+
+//using var connection = factory.CreateConnection();
+//using var model = connection.CreateModel();
+//var prop = model.CreateBasicProperties();
+
+while (true)
+{
+    // 6000 msgs/sec max latency 20sec
+    //var clientcount = 100;
+    //var batchSize = 2;
+
+    // 5000 msgs/sec max latency 30sec
+    //var clientcount = 50;
+    //var batchSize = 20;
+
+    // 4000 msgs / sec max latency 30sec
+    //var clientcount = 20;
+    //var batchSize = 50;
+
+    // 20000 msgs / sec max latency 50ms
+    var clientcount = 12;
+    var batchSize = 50;
+
+    // 30000 msgs / sec max latency 20ms
+    //var clientcount = 10;
+    //var batchSize = 100;
+
+    // 30000 msgs / sec max latency 10ms
+    //var clientcount = 1;
+    //var batchSize = 1000;
+
+    for (int i = 0; i < clientcount; i++)
+    {
+        Task.Run(() => SendHeartbeat($"PLC{i}", batchSize));
+    }
+
+    await Task.Delay(TimeSpan.FromDays(1));
+}
+
+static async Task SendHeartbeat(string plcName, int batchcount)
+{
+    await Task.Yield();
+
+    var factory = new MqttClientAdapterFactory();
+    var mqtt = new MqttClient(factory, new MqttNetNullLogger());
+
+    await mqtt.ConnectAsync(new MqttClientOptions()
+    {
+        Credentials = new MqttClientCredentials("user", Encoding.UTF8.GetBytes("password")),
+        ChannelOptions = new MqttClientTcpOptions()
+        {
+            Port = 1883,
+            Server = "localhost"
+        }
+    });
+
+    var count = 0;
+    while (true)
+    {
+        for (int i = 0; i < batchcount; i++)
+        {
+            var heartbeat = new Heartbeat()
+            {
+                Count = ++count,
+                Timestamp = PreciseDatetime.Now
+            };
+
+            var payload = JsonSerializer.SerializeToUtf8Bytes(heartbeat, typeof(Heartbeat));
+
+            //model.BasicPublish("amq.topic", $"events.{plcName}.heartbeat", prop, payload);
+
+            await mqtt.PublishAsync(new MQTTnet.MqttApplicationMessage()
+            {
+                PayloadSegment = new ArraySegment<byte>(payload, 0, payload.Length),
+                Topic = $"events/{plcName}/heartbeat"
+            });
+        }
+
+        await Task.Delay(10);
+    }
+}
+
+
+class Heartbeat 
+{
+    public int Count { get; set; }
+
+    public DateTime Timestamp { get; set; }
+}
+
+public class PreciseDatetime
+{
+    // using DateTime.Now resulted in many many log events with the same timestamp.
+    // use static variables in case there are many instances of this class in use in the same program
+    // (that way they will all be in sync)
+    private static readonly Stopwatch myStopwatch = new Stopwatch();
+    private static System.DateTime myStopwatchStartTime;
+
+    static PreciseDatetime()
+    {
+        Reset();
+
+        //try
+        //{
+        //    // In case the system clock gets updated
+        //    SystemEvents.TimeChanged += SystemEvents_TimeChanged;
+        //}
+        //catch (Exception)
+        //{
+        //}
+    }
+
+    static void SystemEvents_TimeChanged(object sender, EventArgs e)
+    {
+        Reset();
+    }
+
+    // SystemEvents.TimeChanged can be slow to fire (3 secs), so allow forcing of reset
+    public static void Reset()
+    {
+        myStopwatchStartTime = System.DateTime.Now;
+        myStopwatch.Restart();
+    }
+
+    public static System.DateTime Now { get { return myStopwatchStartTime.Add(myStopwatch.Elapsed); } }
+}

@@ -8,49 +8,82 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-//var factory = new ConnectionFactory();
-//factory.UserName = "user";
-//factory.Password= "password";
+var mode = "Mqtt"; // Amqp
 
-//using var connection = factory.CreateConnection();
-//using var model = connection.CreateModel();
-//var prop = model.CreateBasicProperties();
+// MQTT 6000 msgs/sec max latency 20sec
+var clientcount = 100;
+var batchSize = 2;
 
-while (true)
+// MQTT 5000 msgs/sec max latency 30sec
+//var clientcount = 50;
+//var batchSize = 20;
+
+// MQTT 4000 msgs / sec max latency 30sec
+//var clientcount = 20;
+//var batchSize = 50;
+
+// MQTT 20000 msgs / sec max latency 50ms
+//var clientcount = 12;
+//var batchSize = 50;
+
+// MQTT 30000 msgs / sec max latency 20ms
+//var clientcount = 10;
+//var batchSize = 100;
+
+// MQTT 30000 msgs / sec max latency 10ms
+//var clientcount = 1;
+//var batchSize = 1000;
+
+for (int i = 0; i < clientcount; i++)
 {
-    // 6000 msgs/sec max latency 20sec
-    //var clientcount = 100;
-    //var batchSize = 2;
-
-    // 5000 msgs/sec max latency 30sec
-    //var clientcount = 50;
-    //var batchSize = 20;
-
-    // 4000 msgs / sec max latency 30sec
-    //var clientcount = 20;
-    //var batchSize = 50;
-
-    // 20000 msgs / sec max latency 50ms
-    var clientcount = 12;
-    var batchSize = 50;
-
-    // 30000 msgs / sec max latency 20ms
-    //var clientcount = 10;
-    //var batchSize = 100;
-
-    // 30000 msgs / sec max latency 10ms
-    //var clientcount = 1;
-    //var batchSize = 1000;
-
-    for (int i = 0; i < clientcount; i++)
+    Task.Run(() => 
     {
-        Task.Run(() => SendHeartbeat($"PLC{i}", batchSize));
-    }
-
-    await Task.Delay(TimeSpan.FromDays(1));
+        if (mode == "Mqtt")
+        {
+            SendHeartbeatMqtt($"PLC{i}", batchSize);
+        }
+        else
+        {
+            SendHeartbeatAmqp($"PLC{i}", batchSize);
+        }
+    });
 }
 
-static async Task SendHeartbeat(string plcName, int batchcount)
+await Task.Delay(TimeSpan.FromDays(1));
+
+static async Task SendHeartbeatAmqp(string plcName, int batchcount)
+{
+    await Task.Yield();
+
+    var factory = new ConnectionFactory();
+    factory.UserName = "user";
+    factory.Password = "password";
+
+    using var connection = factory.CreateConnection();
+    using var model = connection.CreateModel();
+    var prop = model.CreateBasicProperties();
+
+    var count = 0;
+    while (true)
+    {
+        for (int i = 0; i < batchcount; i++)
+        {
+            var heartbeat = new Heartbeat()
+            {
+                Count = ++count,
+                Timestamp = PreciseDatetime.Now
+            };
+
+            var payload = JsonSerializer.SerializeToUtf8Bytes(heartbeat, typeof(Heartbeat));
+
+            model.BasicPublish("amq.topic", $"events.{plcName}.heartbeat", prop, payload);            
+        }
+
+        await Task.Delay(10);
+    }
+}
+
+static async Task SendHeartbeatMqtt(string plcName, int batchcount)
 {
     await Task.Yield();
 
@@ -79,8 +112,6 @@ static async Task SendHeartbeat(string plcName, int batchcount)
             };
 
             var payload = JsonSerializer.SerializeToUtf8Bytes(heartbeat, typeof(Heartbeat));
-
-            //model.BasicPublish("amq.topic", $"events.{plcName}.heartbeat", prop, payload);
 
             await mqtt.PublishAsync(new MQTTnet.MqttApplicationMessage()
             {

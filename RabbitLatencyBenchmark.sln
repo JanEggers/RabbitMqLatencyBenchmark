@@ -3,9 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.4.33213.308
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RabbitLatencyBenchmarkProducer", "RabbitLatencyBenchmarkProducer\RabbitLatencyBenchmarkProducer.csproj", "{B771A710-49E8-41B6-89CF-F831C8B9187F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RabbitLatencyBenchmarkProducer", "RabbitLatencyBenchmarkProducer\RabbitLatencyBenchmarkProducer.csproj", "{B771A710-49E8-41B6-89CF-F831C8B9187F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RabbitLatencyBenchmarkConsumer", "RabbitLatencyBenchmarkConsumer\RabbitLatencyBenchmarkConsumer.csproj", "{DDC6E594-57A5-4B1A-86C9-60023ADA8FBD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RabbitLatencyBenchmarkConsumer", "RabbitLatencyBenchmarkConsumer\RabbitLatencyBenchmarkConsumer.csproj", "{DDC6E594-57A5-4B1A-86C9-60023ADA8FBD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Broker", "Broker\Broker.csproj", "{E1E8C502-20C7-4202-B429-165E1FA30C21}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{DDC6E594-57A5-4B1A-86C9-60023ADA8FBD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DDC6E594-57A5-4B1A-86C9-60023ADA8FBD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DDC6E594-57A5-4B1A-86C9-60023ADA8FBD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1E8C502-20C7-4202-B429-165E1FA30C21}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1E8C502-20C7-4202-B429-165E1FA30C21}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1E8C502-20C7-4202-B429-165E1FA30C21}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1E8C502-20C7-4202-B429-165E1FA30C21}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

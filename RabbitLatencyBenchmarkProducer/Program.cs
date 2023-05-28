@@ -49,15 +49,17 @@ var batchSize = 2;
 
 for (int i = 0; i < clientcount; i++)
 {
+    var plcName = $"PLC{i}";
+
     Task.Run(() => 
     {
         if (mode == "Mqtt")
         {
-            SendHeartbeatMqtt($"PLC{i}", batchSize);
+            SendHeartbeatMqtt(plcName, batchSize);
         }
         else
         {
-            SendHeartbeatAmqp($"PLC{i}", batchSize);
+            SendHeartbeatAmqp(plcName, batchSize);
         }
     });
 }
@@ -114,6 +116,9 @@ static async Task SendHeartbeatMqtt(string plcName, int batchcount)
     });
 
     var count = 0;
+    var lastcount = 0;
+    var timestamp = PreciseDatetime.Now;
+
     while (true)
     {
         for (int i = 0; i < batchcount; i++)
@@ -134,6 +139,16 @@ static async Task SendHeartbeatMqtt(string plcName, int batchcount)
         }
 
         await Task.Delay(10);
+
+        if (count > lastcount + 1000)
+        {
+            lastcount = count;
+            var now = PreciseDatetime.Now;
+            var diff = now - timestamp;
+            timestamp = now;
+
+            Console.WriteLine($"published {1000} msgs for {plcName} in {diff.TotalMilliseconds}ms");
+        }
     }
 }
 

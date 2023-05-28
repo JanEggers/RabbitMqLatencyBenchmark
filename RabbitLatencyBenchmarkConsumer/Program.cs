@@ -1,38 +1,21 @@
 ﻿
 
+using MQTTnet.Client;
+using MQTTnet.Diagnostics;
+using MQTTnet.Implementations;
+using MQTTnet.Packets;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
-var factory = new ConnectionFactory();
-factory.UserName = "user";
-factory.Password = "password";
-
-using var connection = factory.CreateConnection();
-using var model = connection.CreateModel();
-
-model.QueueDeclare("Consumer", true, true, true);
-model.QueueBind("Consumer", "amq.topic", $"events.#.heartbeat", new Dictionary<string, object>());
-
-var consumer = new EventingBasicConsumer(model);
 var msgs = 0;
 var latency = 0.0;
 var maxLatency = 0.0;
 
-consumer.Received += OnReceived;
-
-
-void OnReceived(object? sender, BasicDeliverEventArgs e)
-{
-    var heartbeat = JsonSerializer.Deserialize<Heartbeat>(e.Body.Span);
-    msgs++;
-    var currentlatency = (PreciseDatetime.Now - heartbeat.Timestamp).TotalMilliseconds;
-    latency += currentlatency;
-    maxLatency = Math.Max(maxLatency, currentlatency);
-}
-
-model.BasicConsume("Consumer", true, consumer);
+ReceiveAmqp();
+//await ReceiveMqtt();
 
 while (true)
 {
@@ -41,6 +24,72 @@ while (true)
     maxLatency = 0;
     latency = 0;
     msgs = 0;
+}
+
+void ReceiveAmqp() 
+{
+    var factory = new ConnectionFactory();
+    factory.UserName = "user";
+    factory.Password = "password";
+
+    using var connection = factory.CreateConnection();
+    using var model = connection.CreateModel();
+
+    model.QueueDeclare("Consumer", true, true, true);
+    model.QueueBind("Consumer", "amq.topic", $"events.#.heartbeat", new Dictionary<string, object>());
+
+    var consumer = new EventingBasicConsumer(model);
+
+    consumer.Received += OnReceived;
+
+
+    void OnReceived(object? sender, BasicDeliverEventArgs e)
+    {
+        var heartbeat = JsonSerializer.Deserialize<Heartbeat>(e.Body.Span);
+        msgs++;
+        var currentlatency = (PreciseDatetime.Now - heartbeat.Timestamp).TotalMilliseconds;
+        latency += currentlatency;
+        maxLatency = Math.Max(maxLatency, currentlatency);
+    }
+
+    model.BasicConsume("Consumer", true, consumer);
+}
+
+async Task ReceiveMqtt()
+{
+    var factory = new MqttClientAdapterFactory();
+    var mqtt = new MqttClient(factory, new MqttNetNullLogger());
+
+    await mqtt.ConnectAsync(new MqttClientOptions()
+    {
+        Credentials = new MqttClientCredentials("user", Encoding.UTF8.GetBytes("password")),
+        ChannelOptions = new MqttClientTcpOptions()
+        {
+            Port = 1883,
+            Server = "localhost"
+        }
+    });
+
+    mqtt.ApplicationMessageReceivedAsync += async msg =>
+    {
+        var heartbeat = JsonSerializer.Deserialize<Heartbeat>(msg.ApplicationMessage.PayloadSegment);
+        msgs++;
+        var currentlatency = (PreciseDatetime.Now - heartbeat.Timestamp).TotalMilliseconds;
+        latency += currentlatency;
+        maxLatency = Math.Max(maxLatency, currentlatency);
+    };
+
+    await mqtt.SubscribeAsync(new MqttClientSubscribeOptions()
+    {
+        TopicFilters = new List<MqttTopicFilter>()
+        {
+            new MqttTopicFilter() 
+            {
+                QualityOfServiceLevel = MQTTnet.Protocol.MqttQualityOfServiceLevel.AtMostOnce,
+                Topic = "events/+/heartbeat"
+            }
+        }
+    });
 }
 
 class Heartbeat

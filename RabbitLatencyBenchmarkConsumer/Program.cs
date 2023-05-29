@@ -14,7 +14,7 @@ var msgs = 0;
 var latency = 0.0;
 var maxLatency = 0.0;
 
-ReceiveAmqp();
+var client = ReceiveAmqp();
 //await ReceiveMqtt();
 
 while (true)
@@ -26,14 +26,14 @@ while (true)
     msgs = 0;
 }
 
-void ReceiveAmqp() 
+(IConnection, IModel, EventingBasicConsumer) ReceiveAmqp() 
 {
     var factory = new ConnectionFactory();
     factory.UserName = "user";
     factory.Password = "password";
 
-    using var connection = factory.CreateConnection();
-    using var model = connection.CreateModel();
+    var connection = factory.CreateConnection();
+    var model = connection.CreateModel();
 
     model.QueueDeclare("Consumer", true, true, true);
     model.QueueBind("Consumer", "amq.topic", $"events.#.heartbeat", new Dictionary<string, object>());
@@ -53,6 +53,7 @@ void ReceiveAmqp()
     }
 
     model.BasicConsume("Consumer", true, consumer);
+    return (connection, model, consumer);
 }
 
 async Task ReceiveMqtt()

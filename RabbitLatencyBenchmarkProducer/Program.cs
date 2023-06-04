@@ -50,12 +50,13 @@ var batchSize = 2;
 for (int i = 0; i < clientcount; i++)
 {
     var plcName = $"PLC{i}";
+    var j = i;
 
     Task.Run(() => 
     {
         if (mode == "Mqtt")
         {
-            SendHeartbeatMqtt(plcName, batchSize);
+            SendHeartbeatMqtt(plcName, batchSize, j);
         }
         else
         {
@@ -98,7 +99,7 @@ static async Task SendHeartbeatAmqp(string plcName, int batchcount)
     }
 }
 
-static async Task SendHeartbeatMqtt(string plcName, int batchcount)
+static async Task SendHeartbeatMqtt(string plcName, int batchcount, int num)
 {
     await Task.Yield();
 
@@ -110,7 +111,8 @@ static async Task SendHeartbeatMqtt(string plcName, int batchcount)
         Credentials = new MqttClientCredentials("user", Encoding.UTF8.GetBytes("password")),
         ChannelOptions = new MqttClientTcpOptions()
         {
-            Port = 1883,
+            Port = 1883 + num % 3,
+            //Port = 1883,
             Server = "localhost"
         }
     });

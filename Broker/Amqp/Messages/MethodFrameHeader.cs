@@ -4,25 +4,13 @@ using System.Buffers;
 
 namespace Broker.Amqp;
 
-public enum EClassId : short
-{
-    None = 0,
-    Connection = 10,
-}
-
-public enum EMethodId : short
-{
-    None = 0,
-    Start = 10,
-    StartOk = 11
-}
-
 public readonly struct MethodFrameHeader : IMessage
 {
     public static int SerializedLength => 4;
 
     public EClassId ClassId { get; init; }
-    public EMethodId MethodId { get; init; }
+    public short MethodId { get; init; }
+    public short Channel => 0;
 
     public static bool TryDeserialize(in ReadOnlySequence<byte> data, out MethodFrameHeader header, out int consumed)
     {
@@ -42,7 +30,7 @@ public readonly struct MethodFrameHeader : IMessage
         header = new MethodFrameHeader()
         {
             ClassId = (EClassId)classId,
-            MethodId = (EMethodId)methodId,
+            MethodId = methodId,
         };
 
         return true;
@@ -51,6 +39,6 @@ public readonly struct MethodFrameHeader : IMessage
     public void Serialize(IBufferWriter<byte> writer)
     {
         writer.WriteShort((short)ClassId);
-        writer.WriteShort((short)MethodId);
+        writer.WriteShort(MethodId);
     }
 }

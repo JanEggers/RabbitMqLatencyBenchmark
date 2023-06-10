@@ -4,13 +4,14 @@ using System.Runtime.InteropServices;
 
 namespace Broker.Amqp.Messages;
 
-public readonly struct ConnectionStart : IMessage
+public readonly struct StartConnection : IMessage
 {
-    public static MethodFrameHeader Header = new MethodFrameHeader() { ClassId = EClassId.Connection, MethodId = EMethodId.Start };
+    public static MethodFrameHeader Header = new MethodFrameHeader() { ClassId = EClassId.Connection, MethodId = (short)EConnectionMethodId.Start };
 
-    public ConnectionStart()
+    public StartConnection()
     {
     }
+    public short Channel => 0;
 
     public byte MajorVersion { get; init; } = 0;
     public byte MinorVersion { get; init; } = 9;
@@ -48,5 +49,35 @@ public readonly struct ConnectionStart : IMessage
         writer.WriteDictionary(ServerProperties);
         writer.WriteLongString(Mechanisms);
         writer.WriteLongString(Locales);
+    }
+
+    public static bool TryDeserialize(in ReadOnlySequence<byte> data, out StartConnection msg, out int consumed)
+    {
+        msg = default;
+        consumed = 0;
+
+        var reader = new SequenceReader<byte>(data);
+        var result = reader.TryRead(out var majorVersion);
+        result &= reader.TryRead(out var minorVersion);
+        result &= reader.TryReadDictionary(out var serverProperties);
+        result &= reader.TryReadShortString(out var mechanisms);
+        result &= reader.TryReadShortString(out var locales);
+        result &= reader.TryRead(out var end) && end == 0xce;
+
+        if (!result)
+        {
+            return false;
+        }
+
+        consumed = (int)reader.Consumed;
+        msg = new StartConnection()
+        {
+            MajorVersion = majorVersion,
+            MinorVersion = minorVersion,
+            ServerProperties = serverProperties,
+            Mechanisms = mechanisms,
+            Locales = locales
+        };
+        return true;
     }
 }

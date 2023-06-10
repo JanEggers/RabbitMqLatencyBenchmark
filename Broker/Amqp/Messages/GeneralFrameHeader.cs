@@ -7,8 +7,8 @@ public enum EFrameHeaderType
 {
     METHOD = 1,
     HEADER = 2,
-    BODY = 3,
-    HEARTBEAT = 4,
+    BODY = 4,
+    HEARTBEAT = 8,
 }
 
 public readonly struct GeneralFrameHeader

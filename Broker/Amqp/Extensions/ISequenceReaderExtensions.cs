@@ -182,4 +182,24 @@ public static class ISequenceReaderExtensions
 
         return true;
     }
+
+    public static bool TryReadBits(this ref SequenceReader<byte> reader, out bool val1, out bool val2, out bool val3, out bool val4, out bool val5)
+    {
+        val1 = false;
+        val2 = false;
+        val3 = false;
+        val4 = false;
+        val5 = false;
+        if (!reader.TryRead(out var data)) 
+        {
+            return false;
+        }
+
+        val1 = (data & 1) != 0;
+        val2 = (data & 2) != 0;
+        val3 = (data & 4) != 0;
+        val4 = (data & 8) != 0;
+        val5 = (data & 16) != 0;
+        return true;
+    }
 }

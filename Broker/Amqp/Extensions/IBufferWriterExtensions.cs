@@ -46,6 +46,19 @@ public static class IBufferWriterExtensions
         writer.WriteByte((byte)Encoding.UTF8.GetByteCount(value));
         Encoding.UTF8.GetBytes(value, writer);
     }
+
+    public static void WriteBits(this IBufferWriter<byte> writer, bool val1, bool val2, bool val3, bool val4, bool val5)
+    {
+        byte destination = 0;
+
+        destination |= (byte)(val1 ? 1 : 0);
+        destination |= (byte)(val2 ? 2 : 0);
+        destination |= (byte)(val3 ? 4 : 0);
+        destination |= (byte)(val4 ? 8 : 0);
+        destination |= (byte)(val5 ? 16 : 0);
+
+        writer.WriteByte(destination);
+    }
     public static void WriteDictionary(this IBufferWriter<byte> writer, Dictionary<string, object>? value)
     {
         if (value == null) 

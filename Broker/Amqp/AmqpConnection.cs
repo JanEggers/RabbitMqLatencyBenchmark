@@ -2,8 +2,10 @@
 using Broker.Amqp.Messages;
 using Microsoft.AspNetCore.Connections;
 using System.Buffers;
+using System.Collections.Immutable;
 using System.IO.Pipelines;
 using System.Reactive.Subjects;
+using System.Threading.Channels;
 
 namespace Broker.Amqp;
 
@@ -15,6 +17,13 @@ public class AmqpConnection : IDisposable
     private PipeWriter _pipeWriter;
     private CancellationToken _cancellationToken;
     private Subject<IMessage> _receivedMessages = new();
+    private Channel<IMessage> _writeBuffer = Channel.CreateBounded<IMessage>(1024);
+    private ImmutableDictionary<short, AmqpChannel> _channels = ImmutableDictionary<short, AmqpChannel>.Empty;
+
+    public string? VirtualHost { get; private set; }
+
+    public ImmutableDictionary<short, AmqpChannel> Channels => _channels;
+    public IObservable<IMessage> ReceivedMessages => _receivedMessages;
 
     public AmqpConnection(ConnectionContext connectionContext, ILogger<AmqpConnection> logger)
 	{
@@ -24,8 +33,6 @@ public class AmqpConnection : IDisposable
         _pipeWriter = connectionContext.Transport.Output;
         _cancellationToken = connectionContext.ConnectionClosed;
     }
-
-    public IObservable<IMessage> ReceivedMessages => _receivedMessages;
 
     public void Dispose()
     {
@@ -44,30 +51,54 @@ public class AmqpConnection : IDisposable
                 await _pipeWriter.FlushAsync(_cancellationToken);
             }
 
-            await SendAsync(new ConnectionStart());
+            await SendAsync(new StartConnection());
 
-            do
-            {
-                readResult = await _pipereader.ReadAtLeastAsync(7, _cancellationToken);
-                if (readResult.IsCompleted || readResult.IsCanceled)
-                {
-                    return;
-                }
+            var readLoop = RunReadLoop();
+            var writeLoop = RunWriteLoop();
 
-                if (!TryReadMessage(readResult, out var consumed))
-                {
-                    _pipereader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
-                }
-                else
-                {
-                    _pipereader.AdvanceTo(readResult.Buffer.GetPosition(consumed));
-                }
-            } while (!_cancellationToken.IsCancellationRequested);
+            await await Task.WhenAny(readLoop, writeLoop);
+            
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, ex.Message);
         }
+    }
+
+    private async Task RunWriteLoop()
+    {
+        while (!_cancellationToken.IsCancellationRequested) 
+        {
+            while (_writeBuffer.Reader.TryRead(out var msg))
+            {
+                Write(msg);
+            }
+            await _pipeWriter.FlushAsync();
+
+            await _writeBuffer.Reader.WaitToReadAsync(_cancellationToken);
+        }
+    }
+
+    private async Task RunReadLoop()
+    {
+        await Task.Yield();
+        do
+        {
+            var readResult = await _pipereader.ReadAtLeastAsync(7, _cancellationToken);
+            if (readResult.IsCompleted || readResult.IsCanceled)
+            {
+                return;
+            }
+
+            if (!TryReadMessage(readResult, out var consumed))
+            {
+                _pipereader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
+            }
+            else
+            {
+                _pipereader.AdvanceTo(readResult.Buffer.GetPosition(consumed));
+            }
+        } while (!_cancellationToken.IsCancellationRequested);
     }
 
     private bool TryReadMessage(in ReadResult readResult, out int consumed) 
@@ -95,7 +126,7 @@ public class AmqpConnection : IDisposable
                     return false;
                 }
 
-                var result = TryReadMethod(readResult.Buffer.Slice(consumedGeneral + consumedMethodHeader), methodHeader, out var consumedBody);
+                var result = TryReadClassMethod(readResult.Buffer.Slice(consumedGeneral + consumedMethodHeader), generalHeader, methodHeader, out var consumedBody);
                 consumed = consumedBody + consumedMethodHeader + consumedGeneral;
                 return result;
             case EFrameHeaderType.HEADER:
@@ -103,6 +134,12 @@ public class AmqpConnection : IDisposable
             case EFrameHeaderType.BODY:
                 break;
             case EFrameHeaderType.HEARTBEAT:
+                if (!Heartbeat.TryDeserialize(readResult.Buffer.Slice(consumedGeneral), out var heartbeat, out var consumedHeartbeat))
+                {
+                    return false;
+                }
+                _receivedMessages.OnNext(heartbeat);
+                consumed = consumedHeartbeat + consumedGeneral;
                 break;
             default:
                 throw new NotSupportedException(generalHeader.FrameHeaderType.ToString());
@@ -110,19 +147,124 @@ public class AmqpConnection : IDisposable
         return false;
     }
 
-    private bool TryReadMethod(in ReadOnlySequence<byte> data, in MethodFrameHeader header, out int consumed)
+    private bool TryReadClassMethod(in ReadOnlySequence<byte> data, in GeneralFrameHeader generalHeader, in MethodFrameHeader methodHeader, out int consumed)
     {
-        switch ((header.ClassId, header.MethodId))
+        switch (methodHeader.ClassId)
         {
-            case (EClassId.Connection, EMethodId.StartOk):
-                if (ConnectionStartOk.TryDeserialize(data, out var msg, out consumed)) 
-                {
-                    _receivedMessages.OnNext(msg);
-                    return true;
-                }
-                break;
+            case EClassId.Connection:
+                return TryReadConnectionMethod(data, methodHeader, out consumed);
+            case EClassId.Channel:
+                return TryReadChannelMethod(data, generalHeader, methodHeader, out consumed);
+            case EClassId.Queue:
+                return TryReadQueueMethod(data, generalHeader, methodHeader, out consumed);
             default:
-                throw new NotSupportedException(header.ClassId.ToString() + header.MethodId.ToString());
+                throw new NotSupportedException(methodHeader.ClassId.ToString());
+        }
+        return false;
+    }
+
+    private bool TryReadConnectionMethod(in ReadOnlySequence<byte> data, in MethodFrameHeader header, out int consumed)
+    {
+        var methodId = (EConnectionMethodId)header.MethodId;
+        switch (methodId)
+        {
+            case EConnectionMethodId.StartOk:
+                {
+                    if (ConnectionStarted.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        _receivedMessages.OnNext(msg);
+                        Buffer(new TuneConnection());
+                        return true;
+                    }
+                    break;
+                }
+            case EConnectionMethodId.TuneOk:
+                {
+                    if (ConnectionTuned.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        _receivedMessages.OnNext(msg);
+                        return true;
+                    }
+                    break;
+                }
+            case EConnectionMethodId.Open:
+                {
+                    if (OpenConnection.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        VirtualHost = msg.VirtualHost;
+                        _receivedMessages.OnNext(msg);
+                        Buffer(new ConnectionOpened() { VirtualHost = msg.VirtualHost });
+                        return true;
+                    }
+                    break;
+                }
+            default:
+                throw new NotSupportedException(methodId.ToString());
+        }
+        return false;
+    }
+
+    private bool TryReadQueueMethod(in ReadOnlySequence<byte> data, in GeneralFrameHeader generalHeader, in MethodFrameHeader methodHeader, out int consumed)
+    {
+        var methodId = (EQueueMethodId)methodHeader.MethodId;
+        switch (methodId)
+        {
+            case EQueueMethodId.Declare:
+                {
+                    if (DeclareQueue.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        ImmutableInterlockedEx.Update(ref _channels, generalHeader.Channel, current => current with 
+                        { 
+                            Queues = current.Queues.Add(msg.Queue, new AmqpQueue()
+                            {
+                                Name = msg.Queue,
+                                Passive = msg.Passive,
+                                Durable = msg.Durable,
+                                Exclusive = msg.Exclusive,
+                                AutoDelete = msg.AutoDelete,
+                                Nowait = msg.Nowait,
+                                Arguments = msg.Arguments.ToImmutableDictionary(),
+                            })
+                        });
+                        _receivedMessages.OnNext(msg);
+                        Buffer(new QueueDeclared() { Channel = generalHeader.Channel, Queue = msg.Queue });
+                        return true;
+                    }
+                    break;
+                }
+            default:
+                throw new NotSupportedException(methodId.ToString());
+        }
+        return false;
+    }
+
+    private bool TryReadChannelMethod(in ReadOnlySequence<byte> data, in GeneralFrameHeader generalHeader, in MethodFrameHeader methodHeader, out int consumed)
+    {
+        var methodId = (EChannelMethodId)methodHeader.MethodId;
+        switch (methodId)
+        {
+            case EChannelMethodId.Open:
+                {
+                    if (OpenChannel.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        _channels = _channels.Add(generalHeader.Channel, new AmqpChannel() { Id = generalHeader.Channel });
+                        _receivedMessages.OnNext(msg);
+                        Buffer(new ChannelOpened() { Channel = generalHeader.Channel });
+                        return true;
+                    }
+                    break;
+                }
+            case EChannelMethodId.Flow:
+                {
+                    if (ConnectionTuned.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        _receivedMessages.OnNext(msg);
+                        return true;
+                    }
+                    break;
+                }
+            default:
+                throw new NotSupportedException(methodId.ToString());
         }
         return false;
     }
@@ -145,12 +287,24 @@ public class AmqpConnection : IDisposable
 
     private async ValueTask SendAsync<T>(T message) where T : IMessage
     {
+        Write(message);
+        await _pipeWriter.FlushAsync(_cancellationToken);
+    }
+
+    private void Buffer<T>(T message) where T : IMessage
+    {
+        if (!_writeBuffer.Writer.TryWrite(message)) 
+        {
+            _writeBuffer.Writer.WriteAsync(message).GetAwaiter().GetResult();
+        }
+    }
+
+    private void Write<T>(T message) where T : IMessage
+    {
         var writer = new ArrayBufferWriter<byte>();
         message.Serialize(writer);
-        var writer2 = new ArrayBufferWriter<byte>();
-        new GeneralFrameHeader() { FrameHeaderType = EFrameHeaderType.METHOD, Length = writer.WrittenCount }.Serialize(_pipeWriter);
+        new GeneralFrameHeader() { FrameHeaderType = EFrameHeaderType.METHOD, Length = writer.WrittenCount, Channel = message.Channel }.Serialize(_pipeWriter);
         _pipeWriter.Write(writer.WrittenSpan);
         _pipeWriter.WriteByte(0xce);
-        await _pipeWriter.FlushAsync(_cancellationToken);
     }
 }

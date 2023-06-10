@@ -4,11 +4,11 @@ using System.Runtime.InteropServices;
 
 namespace Broker.Amqp.Messages;
 
-public readonly struct ConnectionStartOk : IMessage
+public readonly struct ConnectionStarted : IMessage
 {
-    public static MethodFrameHeader Header = new MethodFrameHeader() { ClassId = EClassId.Connection, MethodId = EMethodId.StartOk };
+    public static MethodFrameHeader Header = new MethodFrameHeader() { ClassId = EClassId.Connection, MethodId = (short)EConnectionMethodId.StartOk };
 
-    public ConnectionStartOk()
+    public ConnectionStarted()
     {
     }
 
@@ -16,6 +16,7 @@ public readonly struct ConnectionStartOk : IMessage
     public string Mechanism { get; init; }
     public string Response { get; init; }
     public string Locale { get; init; }
+    public short Channel => 0;
 
     public void Serialize(IBufferWriter<byte> writer)
     {
@@ -26,7 +27,7 @@ public readonly struct ConnectionStartOk : IMessage
         writer.WriteShortString(Locale);
     }
 
-    public static bool TryDeserialize(in ReadOnlySequence<byte> data, out ConnectionStartOk msg, out int consumed)
+    public static bool TryDeserialize(in ReadOnlySequence<byte> data, out ConnectionStarted msg, out int consumed)
     {
         msg = default;
         consumed = 0;
@@ -36,6 +37,7 @@ public readonly struct ConnectionStartOk : IMessage
         result &= reader.TryReadShortString(out var mechanism);
         result &= reader.TryReadLongString(out var response);
         result &= reader.TryReadShortString(out var locale);
+        result &= reader.TryRead(out var end) && end == 0xce;
 
         if (!result)
         {
@@ -43,7 +45,7 @@ public readonly struct ConnectionStartOk : IMessage
         }
 
         consumed = (int)reader.Consumed;
-        msg = new ConnectionStartOk()
+        msg = new ConnectionStarted()
         {
             ClientProperties = clientProperties,
             Mechanism = mechanism,

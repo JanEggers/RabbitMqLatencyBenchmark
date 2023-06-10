@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="MQTTnet.AspNetCore" Version="4.2.0.706" />
     <PackageReference Include="RabbitMQ.Client" Version="6.5.0" />
+    <PackageReference Include="System.Collections.Immutable" Version="7.0.0" />
     <PackageReference Include="System.Reactive" Version="6.0.0" />
   </ItemGroup>
 

@@ -111,8 +111,8 @@ static async Task SendHeartbeatMqtt(string plcName, int batchcount, int num)
         Credentials = new MqttClientCredentials("user", Encoding.UTF8.GetBytes("password")),
         ChannelOptions = new MqttClientTcpOptions()
         {
-            Port = 1883 + num % 3,
-            //Port = 1883,
+            //Port = 1883 + num % 3,
+            Port = 1883,
             Server = "localhost"
         }
     });

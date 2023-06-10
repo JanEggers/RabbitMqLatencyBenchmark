@@ -7,7 +7,7 @@ public enum EFrameHeaderType
 {
     METHOD = 1,
     HEADER = 2,
-    BODY = 4,
+    BODY = 3,
     HEARTBEAT = 8,
 }
 

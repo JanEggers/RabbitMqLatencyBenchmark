@@ -47,7 +47,7 @@ public static class IBufferWriterExtensions
         Encoding.UTF8.GetBytes(value, writer);
     }
 
-    public static void WriteBits(this IBufferWriter<byte> writer, bool val1, bool val2, bool val3, bool val4, bool val5)
+    public static void WriteBits(this IBufferWriter<byte> writer, bool val1 = false, bool val2 = false, bool val3 = false, bool val4 = false, bool val5 = false)
     {
         byte destination = 0;
 

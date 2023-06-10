@@ -130,7 +130,14 @@ public class AmqpConnection : IDisposable
                 consumed = consumedBody + consumedMethodHeader + consumedGeneral;
                 return result;
             case EFrameHeaderType.HEADER:
-                break;
+                if (!ContentHeader.TryDeserialize(readResult.Buffer.Slice(consumedGeneral), out var contentHeader, out var consumedContentHeader))
+                {
+                    return false;
+                }
+                ImmutableInterlockedEx.Update(ref _channels, generalHeader.Channel, current => current with { CurrentContentHeader = contentHeader });
+                _receivedMessages.OnNext(contentHeader);
+                consumed = consumedContentHeader + consumedGeneral;
+                return true;
             case EFrameHeaderType.BODY:
                 break;
             case EFrameHeaderType.HEARTBEAT:
@@ -140,7 +147,7 @@ public class AmqpConnection : IDisposable
                 }
                 _receivedMessages.OnNext(heartbeat);
                 consumed = consumedHeartbeat + consumedGeneral;
-                break;
+                return true;
             default:
                 throw new NotSupportedException(generalHeader.FrameHeaderType.ToString());
         }
@@ -157,8 +164,58 @@ public class AmqpConnection : IDisposable
                 return TryReadChannelMethod(data, generalHeader, methodHeader, out consumed);
             case EClassId.Queue:
                 return TryReadQueueMethod(data, generalHeader, methodHeader, out consumed);
+            case EClassId.Basic:
+                return TryReadBasicMethod(data, generalHeader, methodHeader, out consumed);
             default:
                 throw new NotSupportedException(methodHeader.ClassId.ToString());
+        }
+        return false;
+    }
+
+    private bool TryReadBasicMethod(ReadOnlySequence<byte> data, GeneralFrameHeader generalHeader, MethodFrameHeader methodHeader, out int consumed)
+    {
+        var methodId = (EBasicMethodId)methodHeader.MethodId;
+        switch (methodId)
+        {
+            case EBasicMethodId.Publish:
+                {
+                    if (BasicPublish.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        ImmutableInterlockedEx.Update(ref _channels, generalHeader.Channel, current => current with { CurrentBasicPublish = msg });
+                        _receivedMessages.OnNext(msg);
+                        return true;
+                    }
+                    break;
+                }
+            case EBasicMethodId.Consume:
+                {
+                    if (BasicConsume.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        if (string.IsNullOrEmpty(msg.ConsumerTag)) 
+                        {
+                            msg = new BasicConsume() 
+                            {
+                                ConsumerTag = Guid.NewGuid().ToString(),
+                                Queue = msg.Queue,
+                                NoLocal = msg.NoLocal,
+                                NoAck = msg.NoLocal,
+                                Exclusive = msg.Exclusive,
+                                Nowait = msg.Nowait,
+                                Arguments = msg.Arguments
+                            };
+                        }
+                        ImmutableInterlockedEx.Update(ref _channels, generalHeader.Channel, current => current.UpdateQueue(msg.Queue, currentQueue => currentQueue with
+                        {
+                            Consumer = msg
+                        }));
+                        _receivedMessages.OnNext(msg);
+                        Buffer(new BasicConsumed() { Channel = generalHeader.Channel, ConsumerTag = msg.ConsumerTag });
+                        return true;
+                    }
+                    break;
+                }
+            default:
+                throw new NotSupportedException(methodId.ToString());
         }
         return false;
     }
@@ -228,6 +285,26 @@ public class AmqpConnection : IDisposable
                         });
                         _receivedMessages.OnNext(msg);
                         Buffer(new QueueDeclared() { Channel = generalHeader.Channel, Queue = msg.Queue });
+                        return true;
+                    }
+                    break;
+                }
+            case EQueueMethodId.Bind:
+                {
+                    if (BindQueue.TryDeserialize(data, out var msg, out consumed))
+                    {
+                        ImmutableInterlockedEx.Update(ref _channels, generalHeader.Channel, current => current.UpdateQueue(msg.Queue, currentQueue => currentQueue with
+                        {
+                            Bindings = currentQueue.Bindings.Add(new AmqpQueueBinding()
+                            {
+                                Exchange = msg.Exchange,
+                                RoutingKey = msg.RoutingKey,
+                                Nowait = msg.Nowait,
+                                Arguments = msg.Arguments.ToImmutableDictionary()
+                            })
+                        }));
+                        _receivedMessages.OnNext(msg);
+                        Buffer(new QueueBound() { Channel = generalHeader.Channel });
                         return true;
                     }
                     break;

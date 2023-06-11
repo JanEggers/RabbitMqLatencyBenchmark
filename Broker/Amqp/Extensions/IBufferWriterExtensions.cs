@@ -84,7 +84,13 @@ public static class IBufferWriterExtensions
     }
     public static void WriteLong(this IBufferWriter<byte> writer, long value)
     {
-
+        BinaryPrimitives.WriteInt64BigEndian(writer.GetSpan(8), value);
+        writer.Advance(8);
+    }
+    public static void WriteULong(this IBufferWriter<byte> writer, ulong value)
+    {
+        BinaryPrimitives.WriteUInt64BigEndian(writer.GetSpan(8), value);
+        writer.Advance(8);
     }
     public static void WriteUInt(this IBufferWriter<byte> writer, uint value)
     {

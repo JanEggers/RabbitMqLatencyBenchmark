@@ -5,15 +5,37 @@ namespace Broker.Amqp.Messages;
 
 public readonly struct ContentHeader : IMessage
 {
+
     public short Channel { get; init; }
-    public EClassId ClassId { get; init; }
+
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.HEADER;
+    public EClassId ClassId { get; init; } = EClassId.Basic;
     public short Weight { get; init; }
     public long BodySize { get; init; }
     public short PropertyFlags { get; init; }
 
+    public ContentHeader()
+    {
+    }
+
+    public ContentHeader WithChannel(short channel) 
+    {
+        return new ContentHeader() 
+        {
+            Channel = channel,
+            ClassId = ClassId,
+            Weight= Weight,
+            BodySize = BodySize,
+            PropertyFlags = PropertyFlags
+        };
+    }
+
     public void Serialize(IBufferWriter<byte> writer)
     {
-        throw new NotImplementedException();
+        writer.WriteShort((short)ClassId);
+        writer.WriteShort(Weight);
+        writer.WriteLong(BodySize);
+        writer.WriteShort(PropertyFlags);
     }
 
     public static bool TryDeserialize(in ReadOnlySequence<byte> data, out ContentHeader msg, out int consumed)

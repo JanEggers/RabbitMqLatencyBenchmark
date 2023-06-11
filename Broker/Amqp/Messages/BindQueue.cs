@@ -9,6 +9,8 @@ public readonly struct BindQueue : IMessage
 
     public short Channel { get; init; }
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public string Queue { get; init; }
     public string Exchange { get; init; }
     public string RoutingKey { get; init; }

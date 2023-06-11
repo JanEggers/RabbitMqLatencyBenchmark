@@ -10,6 +10,8 @@ public readonly struct Heartbeat : IMessage
     public static Heartbeat Instance = new Heartbeat();
     public short Channel => 0;
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public void Serialize(IBufferWriter<byte> writer)
     {
         Header.Serialize(writer);

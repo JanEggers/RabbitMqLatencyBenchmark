@@ -8,7 +8,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-var mode = "Mqtt"; // Amqp
+var mode = "Amqp"; // "Mqtt"; // Amqp
 
 //MQTT 6000 msgs / sec max latency 20sec
 //MQTT Queue V2 12000 msgs / sec max latency 18sec

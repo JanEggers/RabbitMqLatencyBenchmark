@@ -11,6 +11,8 @@ public readonly struct BasicPublish : IMessage
     {
     }
     public short Channel { get; init; }
+
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
     public string Exchange { get; init; }
     public string RoutingKey { get; init; }
     public bool Mandatory { get; init; }

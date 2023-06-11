@@ -12,6 +12,8 @@ public readonly struct MethodFrameHeader : IMessage
     public short MethodId { get; init; }
     public short Channel => 0;
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public static bool TryDeserialize(in ReadOnlySequence<byte> data, out MethodFrameHeader header, out int consumed)
     {
         header = default;

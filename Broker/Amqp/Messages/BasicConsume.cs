@@ -17,6 +17,8 @@ public class BasicConsume : IMessage
 
     public short Channel { get; init; }
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public BasicConsume()
     {
     }

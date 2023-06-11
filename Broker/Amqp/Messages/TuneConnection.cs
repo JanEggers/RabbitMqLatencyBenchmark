@@ -16,6 +16,8 @@ public readonly struct TuneConnection : IMessage
     public ushort Heartbeat { get; init; } = 60;
     public short Channel => 0;
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public void Serialize(IBufferWriter<byte> writer)
     {
         Header.Serialize(writer);

@@ -9,6 +9,8 @@ public readonly struct OpenChannel : IMessage
 
     public static OpenChannel Instance = new OpenChannel();
     public short Channel => 0;
+
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
     public OpenChannel()
     {
     }

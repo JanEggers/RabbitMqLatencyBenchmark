@@ -12,6 +12,8 @@ public readonly struct QueueDeclared : IMessage
     public uint ConsumerCount { get; init; }
     public short Channel { get; init; }
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public QueueDeclared()
     {
     }

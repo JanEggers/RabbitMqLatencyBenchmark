@@ -15,5 +15,12 @@ public record AmqpQueue
 
     public ImmutableList<AmqpQueueBinding> Bindings { get; init; } = ImmutableList<AmqpQueueBinding>.Empty;
 
+    public ImmutableQueue<CompletePublish> Items { get; init; } = ImmutableQueue<CompletePublish>.Empty;
+
+    public ulong? PendingAck { get; init; }
+
+
     public BasicConsume Consumer { get; init; }
+
+    public ManualResetEvent QueueEmptyWait { get; init; } = new ManualResetEvent(false);
 }

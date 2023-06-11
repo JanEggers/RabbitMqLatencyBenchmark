@@ -18,6 +18,8 @@ public readonly struct ConnectionStarted : IMessage
     public string Locale { get; init; }
     public short Channel => 0;
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public void Serialize(IBufferWriter<byte> writer)
     {
         Header.Serialize(writer);

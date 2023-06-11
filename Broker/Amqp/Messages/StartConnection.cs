@@ -13,6 +13,8 @@ public readonly struct StartConnection : IMessage
     }
     public short Channel => 0;
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public byte MajorVersion { get; init; } = 0;
     public byte MinorVersion { get; init; } = 9;
     public Dictionary<string, object> ServerProperties { get; init; } = new Dictionary<string, object>() 

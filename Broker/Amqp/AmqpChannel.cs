@@ -9,9 +9,9 @@ public record AmqpChannel
 
     public ImmutableDictionary<string, AmqpQueue> Queues { get; init; } = ImmutableDictionary<string, AmqpQueue>.Empty;
 
-    public BasicPublish CurrentBasicPublish { get; init; }
+    public BasicPublish? CurrentBasicPublish { get; init; }
 
-    public ContentHeader CurrentContentHeader { get; init; }
+    public ContentHeader? CurrentContentHeader { get; init; }
 
     public AmqpChannel UpdateQueue(string name, Func<AmqpQueue, AmqpQueue> update)
     {

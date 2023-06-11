@@ -9,6 +9,8 @@ public readonly struct DeclareQueue : IMessage
 
     public short Channel { get; init; }
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
 
     public string Queue { get; init; }
     public bool Passive { get; init; }

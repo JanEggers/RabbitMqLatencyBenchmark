@@ -126,8 +126,8 @@ public class AmqpConnection : IDisposable
                     return false;
                 }
 
-                var result = TryReadClassMethod(readResult.Buffer.Slice(consumedGeneral + consumedMethodHeader), generalHeader, methodHeader, out var consumedBody);
-                consumed = consumedBody + consumedMethodHeader + consumedGeneral;
+                var result = TryReadClassMethod(readResult.Buffer.Slice(consumedGeneral + consumedMethodHeader), generalHeader, methodHeader, out var consumedMethod);
+                consumed = consumedMethod + consumedMethodHeader + consumedGeneral;
                 return result;
             case EFrameHeaderType.HEADER:
                 if (!ContentHeader.TryDeserialize(readResult.Buffer.Slice(consumedGeneral), out var contentHeader, out var consumedContentHeader))
@@ -139,7 +139,23 @@ public class AmqpConnection : IDisposable
                 consumed = consumedContentHeader + consumedGeneral;
                 return true;
             case EFrameHeaderType.BODY:
-                break;
+                if (!ContentBody.TryDeserialize(readResult.Buffer.Slice(consumedGeneral, generalHeader.Length + 1), out var body, out var consumedBody))
+                {
+                    return false;
+                }
+
+                var channel = _channels[generalHeader.Channel];
+                var complete = new CompletePublish()
+                {
+                    BasicPublish = channel.CurrentBasicPublish ?? throw new InvalidOperationException(),
+                    Header = channel.CurrentContentHeader ?? throw new InvalidOperationException(),
+                    Body = body,
+                };
+                ImmutableInterlockedEx.Update(ref _channels, generalHeader.Channel, current => current with { CurrentContentHeader = null, CurrentBasicPublish = null });
+
+                _receivedMessages.OnNext(complete);
+                consumed = consumedBody + consumedGeneral;
+                return true;
             case EFrameHeaderType.HEARTBEAT:
                 if (!Heartbeat.TryDeserialize(readResult.Buffer.Slice(consumedGeneral), out var heartbeat, out var consumedHeartbeat))
                 {
@@ -209,6 +225,7 @@ public class AmqpConnection : IDisposable
                             Consumer = msg
                         }));
                         _receivedMessages.OnNext(msg);
+                        ConsumeQueueAsync(generalHeader.Channel, msg.Queue, msg.ConsumerTag);
                         Buffer(new BasicConsumed() { Channel = generalHeader.Channel, ConsumerTag = msg.ConsumerTag });
                         return true;
                     }
@@ -331,15 +348,6 @@ public class AmqpConnection : IDisposable
                     }
                     break;
                 }
-            case EChannelMethodId.Flow:
-                {
-                    if (ConnectionTuned.TryDeserialize(data, out var msg, out consumed))
-                    {
-                        _receivedMessages.OnNext(msg);
-                        return true;
-                    }
-                    break;
-                }
             default:
                 throw new NotSupportedException(methodId.ToString());
         }
@@ -372,7 +380,7 @@ public class AmqpConnection : IDisposable
     {
         if (!_writeBuffer.Writer.TryWrite(message)) 
         {
-            _writeBuffer.Writer.WriteAsync(message).GetAwaiter().GetResult();
+            _writeBuffer.Writer.WriteAsync(message).AsTask().GetAwaiter().GetResult();
         }
     }
 
@@ -380,8 +388,70 @@ public class AmqpConnection : IDisposable
     {
         var writer = new ArrayBufferWriter<byte>();
         message.Serialize(writer);
-        new GeneralFrameHeader() { FrameHeaderType = EFrameHeaderType.METHOD, Length = writer.WrittenCount, Channel = message.Channel }.Serialize(_pipeWriter);
+        new GeneralFrameHeader() { FrameHeaderType = message.FrameHeaderType, Length = writer.WrittenCount, Channel = message.Channel }.Serialize(_pipeWriter);
         _pipeWriter.Write(writer.WrittenSpan);
         _pipeWriter.WriteByte(0xce);
+    }
+
+    public void Enqueue(short channel, string queue, CompletePublish publish)
+    {
+        ImmutableInterlockedEx.Update(ref _channels, channel, current => current.UpdateQueue(queue, currentQueue => currentQueue with 
+        {
+            Items = currentQueue.Items.Enqueue(publish),
+            QueueEmptyWait = currentQueue.QueueEmptyWait.SetImmutable(),
+        }));
+    }
+
+    private async Task ConsumeQueueAsync(short channel, string queueName, string consumerTag) 
+    {
+        await Task.Yield();
+
+        ulong deliveryTag = 0;
+
+        var start = DateTimeOffset.Now;
+
+        while (!_cancellationToken.IsCancellationRequested) 
+        {
+            var queue = _channels[channel].Queues[queueName];
+            if (queue.Items.IsEmpty /*|| queue.PendingAck.HasValue*/) 
+            {
+                //await Task.Delay(1);
+                queue.QueueEmptyWait.WaitOne();
+                continue;
+            }
+
+            do
+            {
+                var item = queue.Items.Peek();
+
+                var deliver = new BasicDeliver()
+                {
+                    Channel = channel,
+                    ConsumerTag = consumerTag,
+                    Exchange = item.BasicPublish.Exchange,
+                    RoutingKey = item.BasicPublish.RoutingKey,
+                    DeliveryTag = ++deliveryTag
+                };
+
+                Buffer(deliver);
+                Buffer(item.Header.WithChannel(channel));
+                Buffer(item.Body.WithChannel(channel));
+
+                ImmutableInterlockedEx.Update(ref _channels, channel, current => current.UpdateQueue(queueName, currentQueue => currentQueue with
+                {
+                    PendingAck = deliver.DeliveryTag,
+                    Items = currentQueue.Items.Dequeue(),
+                    QueueEmptyWait = currentQueue.QueueEmptyWait.ResetImmutable(),
+                }));
+
+                var diff = DateTimeOffset.Now - start;
+                if (deliveryTag % 10000 == 0)
+                {
+                    _logger.LogInformation("msg rate {DeliveryTag}/{diff} => {MsgRate}msg/sec", deliveryTag, diff, deliveryTag / diff.TotalSeconds);
+                }
+
+                queue = _channels[channel].Queues[queueName];
+            } while (!queue.Items.IsEmpty);            
+        }
     }
 }

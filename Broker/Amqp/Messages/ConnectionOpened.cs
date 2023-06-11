@@ -15,6 +15,8 @@ public readonly struct ConnectionOpened : IMessage
 
     public short Channel => 0;
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public void Serialize(IBufferWriter<byte> writer)
     {
         Header.Serialize(writer);

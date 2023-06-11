@@ -10,6 +10,8 @@ public readonly struct BasicConsumed : IMessage
     public string ConsumerTag { get; init; }
     public short Channel { get; init; }
 
+    public EFrameHeaderType FrameHeaderType => EFrameHeaderType.METHOD;
+
     public void Serialize(IBufferWriter<byte> writer)
     {
         Header.Serialize(writer);

@@ -8,4 +8,16 @@ public static class ImmutableInterlockedEx
     {
         return ImmutableInterlocked.AddOrUpdate(ref location, key, _ => throw new NotSupportedException(), (key, current) => updateValueFunction(current));
     }
+
+    public static ManualResetEvent SetImmutable(this ManualResetEvent evt)
+    {
+        evt.Set();
+        return evt;
+    }
+
+    public static ManualResetEvent ResetImmutable(this ManualResetEvent evt)
+    {
+        evt.Reset();
+        return evt;
+    }
 }

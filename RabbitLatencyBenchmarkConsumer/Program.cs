@@ -4,18 +4,21 @@ using MQTTnet.Client;
 using MQTTnet.Diagnostics;
 using MQTTnet.Implementations;
 using MQTTnet.Packets;
+using MqttOverUdp;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Diagnostics;
 using System.Text;
+using System.Reactive;
 using System.Text.Json;
 
 var msgs = 0;
 var latency = 0.0;
 var maxLatency = 0.0;
 
-var client = ReceiveAmqp();
+//var client = ReceiveAmqp();
 //Task.Run(() => ReceiveMqtt());
+Task.Run(() => ReceiveMqttSn());
 
 while (true)
 {
@@ -91,6 +94,19 @@ async Task ReceiveMqtt()
                 Topic = "events/+/heartbeat"
             }
         }
+    });
+}
+
+async Task ReceiveMqttSn()
+{
+    var mqtt = new MqttSnClient();
+    mqtt.ReceiveAsync(CancellationToken.None).Subscribe(msg =>
+    {
+        var heartbeat = JsonSerializer.Deserialize<Heartbeat>(msg.Body.Span);
+        msgs++;
+        var currentlatency = (PreciseDatetime.Now - heartbeat.Timestamp).TotalMilliseconds;
+        latency += currentlatency;
+        maxLatency = Math.Max(maxLatency, currentlatency);
     });
 }
 

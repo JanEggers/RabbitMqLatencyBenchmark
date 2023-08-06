@@ -13,4 +13,8 @@
         <PackageReference Include="System.Text.Json" Version="6.0.7" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\MqttOverUdp\MqttSn.csproj" />
+    </ItemGroup>
+
 </Project>

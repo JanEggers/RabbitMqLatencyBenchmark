@@ -1,6 +1,4 @@
-﻿using Broker.Amqp;
-using Microsoft.AspNetCore.Connections;
-using MQTTnet.AspNetCore;
+﻿using MQTTnet.AspNetCore;
 using MQTTnet.Server;
 using RabbitMQ.Client;
 

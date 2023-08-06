@@ -184,7 +184,7 @@ static async Task SendHeartbeatMqttOverUdp(string plcName, int batchcount, int n
 
             var payload = JsonSerializer.SerializeToUtf8Bytes(heartbeat, typeof(Heartbeat));
 
-            await publisher.PublishAsync(topic, (ushort)i, payload);
+            await publisher.PublishAsync(new MqttSn.Message() { Body = payload });
         }
 
         await Task.Delay(10);

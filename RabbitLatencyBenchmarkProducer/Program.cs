@@ -3,12 +3,14 @@
 using MQTTnet.Client;
 using MQTTnet.Diagnostics;
 using MQTTnet.Implementations;
+using MqttOverUdp;
 using RabbitMQ.Client;
+using System;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-var mode = "Mqtt"; // Amqp
+var mode = "MqttOverUdp"; // Amqp
 
 //MQTT 6000 msgs / sec max latency 20sec
 //MQTT Queue V2 12000 msgs / sec max latency 18sec
@@ -52,15 +54,20 @@ for (int i = 0; i < clientcount; i++)
     var plcName = $"PLC{i}";
     var j = i;
 
-    Task.Run(() => 
+    _ = Task.Run(async () =>
     {
-        if (mode == "Mqtt")
+        switch (mode)
         {
-            SendHeartbeatMqtt(plcName, batchSize, j);
-        }
-        else
-        {
-            SendHeartbeatAmqp(plcName, batchSize);
+            case "Mqtt":
+                await SendHeartbeatMqtt(plcName, batchSize, j);
+                break;
+            case "MqttOverUdp":
+                await SendHeartbeatMqttOverUdp(plcName, batchSize, j);
+                break;
+            case "Amqp":
+            default:
+                await SendHeartbeatAmqp(plcName, batchSize);
+                break;
         }
     });
 }
@@ -111,8 +118,8 @@ static async Task SendHeartbeatMqtt(string plcName, int batchcount, int num)
         Credentials = new MqttClientCredentials("user", Encoding.UTF8.GetBytes("password")),
         ChannelOptions = new MqttClientTcpOptions()
         {
-            Port = 1883 + num % 3,
-            //Port = 1883,
+            //Port = 1883 + num % 3,
+            Port = 1883,
             Server = "localhost"
         }
     });
@@ -154,8 +161,48 @@ static async Task SendHeartbeatMqtt(string plcName, int batchcount, int num)
     }
 }
 
+static async Task SendHeartbeatMqttOverUdp(string plcName, int batchcount, int num)
+{
+    await Task.Yield();
 
-class Heartbeat 
+    var publisher = new MqttSnClient();
+
+    var count = 0;
+    var lastcount = 0;
+    var timestamp = PreciseDatetime.Now;
+    var topic = $"events/{plcName}/heartbeat";
+
+    while (true)
+    {
+        for (int i = 0; i < batchcount; i++)
+        {
+            var heartbeat = new Heartbeat()
+            {
+                Count = ++count,
+                Timestamp = PreciseDatetime.Now
+            };
+
+            var payload = JsonSerializer.SerializeToUtf8Bytes(heartbeat, typeof(Heartbeat));
+
+            await publisher.PublishAsync(topic, (ushort)i, payload);
+        }
+
+        await Task.Delay(10);
+
+        if (count > lastcount + 1000)
+        {
+            lastcount = count;
+            var now = PreciseDatetime.Now;
+            var diff = now - timestamp;
+            timestamp = now;
+
+            Console.WriteLine($"published {1000} msgs for {plcName} in {diff.TotalMilliseconds}ms");
+        }
+    }
+}
+
+
+class Heartbeat
 {
     public int Count { get; set; }
 

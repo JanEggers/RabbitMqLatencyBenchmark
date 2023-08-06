@@ -15,7 +15,7 @@ var latency = 0.0;
 var maxLatency = 0.0;
 
 var client = ReceiveAmqp();
-//await ReceiveMqtt();
+//Task.Run(() => ReceiveMqtt());
 
 while (true)
 {
@@ -52,6 +52,7 @@ while (true)
         maxLatency = Math.Max(maxLatency, currentlatency);
     }
 
+    model.BasicQos(0, 10, false);
     model.BasicConsume("Consumer", true, consumer);
     return (connection, model, consumer);
 }

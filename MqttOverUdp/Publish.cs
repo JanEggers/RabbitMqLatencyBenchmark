@@ -1,5 +1,6 @@
 ﻿namespace MqttSn;
-public class Message
+public class Publish
 {
+    public string Topic { get; set; }
     public Memory<byte> Body { get; set; }
 }

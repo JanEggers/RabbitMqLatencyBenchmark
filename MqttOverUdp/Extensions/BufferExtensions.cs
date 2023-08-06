@@ -35,19 +35,17 @@ public static class IBufferWriterExtensions
         encoding.GetBytes(value, writer);
     }
 
-    public static void WriteVariableByteInteger(this IBufferWriter<byte> writer, uint value)
+    public static void WriteLength(this IBufferWriter<byte> writer, int length) 
     {
-        do
+        if (length <= 256)
         {
-            var encodedByte = value % 128;
-            value /= 128;
-            if (value > 0)
-            {
-                encodedByte |= 128;
-            }
-
-            writer.WriteByte((byte)encodedByte);
-        } while (value > 0);
+            writer.WriteByte((byte)length);
+        }
+        else
+        {
+            writer.WriteByte(1);
+            writer.WriteUInt16((ushort)length);
+        }
     }
 
     public static byte BuildFixedHeader(this MqttPacketType packetType, byte flags = 0)

@@ -11,6 +11,8 @@ using System.Diagnostics;
 using System.Text;
 using System.Reactive;
 using System.Text.Json;
+using MqttSn;
+using System.Reactive.Linq;
 
 var msgs = 0;
 var latency = 0.0;
@@ -100,7 +102,7 @@ async Task ReceiveMqtt()
 async Task ReceiveMqttSn()
 {
     var mqtt = new MqttSnClient();
-    mqtt.ReceiveAsync(CancellationToken.None).Subscribe(msg =>
+    mqtt.ReceiveAsync(CancellationToken.None).OfType<Publish>().Subscribe(msg =>
     {
         var heartbeat = JsonSerializer.Deserialize<Heartbeat>(msg.Body.Span);
         msgs++;

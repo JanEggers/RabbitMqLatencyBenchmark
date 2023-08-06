@@ -7,6 +7,7 @@ using MqttSn;
 using System.Reactive.Linq;
 using System.Reactive.Disposables;
 using System.Data;
+using System.Collections.Concurrent;
 
 namespace MqttOverUdp;
 public class MqttSnClient
@@ -14,19 +15,22 @@ public class MqttSnClient
     private readonly UdpClient _udpClient;
     private readonly IPEndPoint _to = new IPEndPoint(IPAddress.Broadcast, 1883);
     private int _packetId;
+    private ushort _topicId;
+
+    private readonly ConcurrentDictionary<string, ushort> _topicIds = new ConcurrentDictionary<string, ushort>();
 
     public MqttSnClient()
     {
         _udpClient = new UdpClient();
     }
 
-    public IObservable<Message> ReceiveAsync(CancellationToken cancellationToken)
+    public IObservable<object> ReceiveAsync(CancellationToken cancellationToken)
     {
         _udpClient.ExclusiveAddressUse = false;
         _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 1883));
 
-        return Observable.Create<Message>(async observer =>
+        return Observable.Create<object>(async observer =>
         {
             try
             {
@@ -53,7 +57,7 @@ public class MqttSnClient
         });
     }
 
-    public ValueTask<int> PublishAsync(Message message)
+    public ValueTask<int> PublishAsync(Publish message)
     {
         var length = 7 + message.Body.Length;
 
@@ -63,22 +67,10 @@ public class MqttSnClient
         }
 
         var writer = new ArrayBufferWriter<byte>(length);
-
-        if (length <= 256)
-        {
-            writer.WriteByte((byte)length);
-        }
-        else
-        {
-            writer.WriteByte(1);
-            writer.WriteUInt16((ushort)length);
-        }
-
+        writer.WriteLength(length);
         writer.WriteByte((byte)MqttPacketType.PUBLISH);
         writer.WriteByte((byte)0); // flags
-
-        writer.WriteByte((byte)0); // topicid
-        writer.WriteByte((byte)0); // topicid
+        writer.WriteUInt16(GetOrAddTopicId(message.Topic)); 
         
         writer.WriteUInt16((ushort)Interlocked.Increment(ref _packetId));
         writer.Write(message.Body.Span);
@@ -86,7 +78,12 @@ public class MqttSnClient
         return _udpClient.SendAsync(writer.WrittenMemory, _to);
     }
 
-    private static Message? ReadMessage(ReadOnlyMemory<byte> buffer)
+    private ushort GetOrAddTopicId(string topic) 
+    {
+        return _topicIds.GetOrAdd(topic, key => ++_topicId);
+    }
+
+    private static Publish? ReadMessage(ReadOnlyMemory<byte> buffer)
     {
         var reader = new SequenceReader<byte>(new ReadOnlySequence<byte>(buffer));
 
@@ -124,11 +121,11 @@ public class MqttSnClient
         reader.Advance(1);
         return type;
     }
-    private static Message ReadPublish(ref SequenceReader<byte> reader)
+    private static Publish ReadPublish(ref SequenceReader<byte> reader)
     {
         reader.TryRead(out var flags); 
         reader.TryReadBigEndian(out short topicid);
         reader.TryReadBigEndian(out short packetId);
-        return new Message() { Body = reader.UnreadSpan.ToArray() };
+        return new Publish() { Body = reader.UnreadSpan.ToArray() };
     }
 }
